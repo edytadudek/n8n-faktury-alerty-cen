@@ -1,0 +1,778 @@
+{
+  "name": "Obieg faktur: n8n-faktury-do-arkusza/produkty",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Faktury → arkusz + alert o podwyżkach cen\nPo wrzuceniu faktury PDF do folderu na Dysku workflow:\n1. sprawdza, czy dokument to faktura,\n2. wyciąga pozycje modelem OpenAI,\n3. zapisuje je do Google Sheets (bez duplikatów),\n4. porównuje ceny z wcześniejszymi fakturami,\n5. przy podwyżce powyżej 10% wysyła alert na Telegram.",
+        "height": 254,
+        "width": 520,
+        "color": 4
+      },
+      "id": "b0be82c1-0cfe-4007-8afc-66133a7fa7e1",
+      "name": "Notatka ## 1. Wejście",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        48,
+        -528
+      ]
+    },
+    {
+      "parameters": {
+        "content": "### 1. Pobranie i kontrola\nPobiera PDF i zamienia go na tekst. Jeśli w tekście nie ma słów \"faktura\" i \"NIP\", plik nie trafia do modelu, a Telegram wysyła alert.",
+        "height": 142,
+        "width": 440,
+        "color": 5
+      },
+      "id": "64ace121-0174-4ad7-add7-6dc0b4acd3c9",
+      "name": "Notatka ## 2. Reguły (regex) najpierw",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        432,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4o-mini"
+        },
+        "builtInTools": {},
+        "options": {
+          "temperature": 0
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        1280,
+        48
+      ],
+      "id": "668a78f4-9283-42ec-8bec-6623abeef698",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "triggerOn": "specificFolder",
+        "folderToWatch": {
+          "__rl": true,
+          "value": "",
+          "mode": "list",
+          "cachedResultName": "Przykładowe_faktury",
+          "cachedResultUrl": ""
+        },
+        "event": "fileCreated",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDriveTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        -176
+      ],
+      "id": "a98139b6-2a1d-4d3a-9a2f-d36fb9174847",
+      "name": "PobierzPDF",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        688,
+        -176
+      ],
+      "id": "f632c13e-7e71-4bd6-b7da-9e45371b4cfc",
+      "name": "PDFnaTekst"
+    },
+    {
+      "parameters": {
+        "chatId": "",
+        "text": "=Plik nie wygląda na fakturę. Sprawdź plik: {{ $('PobierzPDF').first().json.name }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1040,
+        16
+      ],
+      "id": "10fc0be9-1bce-4e80-b4e6-d8c3c93cdb7c",
+      "name": "AlertNieFaktura",
+      "webhookId": "",
+      "executeOnce": true,
+      "retryOnFail": true,
+      "credentials": {
+        "telegramApi": {
+          "id": "",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "text": "={{ $json.text }}",
+        "schemaType": "fromJson",
+        "jsonSchemaExample": "{ \"pozycje\": [ { \"nazwa\": \"Schab b/k\", \"ilosc\": 10, \"jednostka\": \"kg\", \"cena_netto\": 24.5, \"vat_proc\": 5, \"nr.fv\": \"FV/2026/06/013\", \"data_wystawienia\": \"2026-06-13\" } ] }",
+        "options": {
+          "systemPromptTemplate": "Wyciągnij wszystkie pozycje z tabeli faktury. Liczby zwracaj jako liczby z kropką dziesiętną, bez separatorów tysięcy i bez symboli walut. Cena to cena jednostkowa netto. Jeśli na fakturze jest tylko cena brutto, oblicz netto na podstawie stawki VAT. Nie wymyślaj pozycji, których nie ma w tekście. Numer faktury i datę wystawienia (format RRRR-MM-DD) dołącz do każdej pozycji. Jeśli ich nie ma w tekście, zwróć pusty tekst, nie zgaduj. Jeśli dokument nie jest fakturą, zwróć pustą tablicę pozycji. Nigdy nie wymyślaj danych."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.informationExtractor",
+      "typeVersion": 1.2,
+      "position": [
+        1200,
+        -192
+      ],
+      "id": "90a932ec-f945-4521-bcdb-1083d23c45df",
+      "name": "WyciągnijPozycjeAI",
+      "retryOnFail": true
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "=output.pozycje",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        1552,
+        -192
+      ],
+      "id": "a71ab98f-c832-4671-8b2a-bc54e56c05f0",
+      "name": "RozdzielPozycje"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "99bee247-fbba-4e49-ae4b-aea6aca918cc",
+              "leftValue": "={{ /faktur|invoice/i.test($json.text) && /NIP/i.test($json.text) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        896,
+        -176
+      ],
+      "id": "e0530322-0136-4a98-b493-da41416f2f7e",
+      "name": "CzyFaktura?"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "9c7578bd-f864-4a09-ae60-dbe6bba47f15",
+              "leftValue": "={{ $json['nr.fv'] }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "c271ea90-11ce-4b3a-9bb7-d77ef700078c",
+              "leftValue": "={{ $json.data_wystawienia }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1984,
+        -192
+      ],
+      "id": "20466fe4-a440-4200-a924-6dd53903fdeb",
+      "name": "CzyDataNumer"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "9f933117-be16-4ef3-ae96-f4ed4cd572b2",
+              "name": "klucz",
+              "value": "={{ $json['nr.fv'] }}|{{ $json.nazwa }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        2208,
+        -288
+      ],
+      "id": "8aa467ee-f23b-4886-a4be-8d41d4ad818b",
+      "name": "DodanieKlucza"
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list",
+          "cachedResultName": "Zamówienie z fv",
+          "cachedResultUrl": ""
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Arkusz1",
+          "cachedResultUrl": ""
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "nazwa": "={{ $json.nazwa }}",
+            "ilosc": "={{ $json.ilosc }}",
+            "jednostka": "={{ $json.jednostka }}",
+            "cena_netto": "={{ $json.cena_netto }}",
+            "vat_proc": "={{ $json.vat_proc }}",
+            "nr.fv": "={{ $json['nr.fv'] }}",
+            "klucz": "={{ $json.klucz }}",
+            "data_wystawienia": "={{ $json.data_wystawienia }}"
+          },
+          "matchingColumns": [
+            "klucz"
+          ],
+          "schema": [
+            {
+              "id": "nazwa",
+              "displayName": "nazwa",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "ilosc",
+              "displayName": "ilosc",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "jednostka",
+              "displayName": "jednostka",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "cena_netto",
+              "displayName": "cena_netto",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "vat_proc",
+              "displayName": "vat_proc",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "nr.fv",
+              "displayName": "nr.fv",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "data_wystawienia",
+              "displayName": "data_wystawienia",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "klucz",
+              "displayName": "klucz",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        2432,
+        -288
+      ],
+      "id": "fb59fa3d-4db1-4a8b-8eb2-120401393eec",
+      "name": "ZapiszDoArkusza",
+      "retryOnFail": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list",
+          "cachedResultName": "Zamówienie z fv",
+          "cachedResultUrl": ""
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Arkusz1",
+          "cachedResultUrl": ""
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        2656,
+        -288
+      ],
+      "id": "5c89bed4-4579-454c-9638-af1481255c45",
+      "name": "PobierzHistorieCen",
+      "executeOnce": true,
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const num = (v) => Number(String(v).replace(',', '.'));\nconst iso = (d) => { const s = String(d ?? '').trim(), m = s.match(/^(\\d{2})[./](\\d{2})[./](\\d{4})/); return m ? `${m[3]}-${m[2]}-${m[1]}` : s.slice(0, 10); };\nconst hist = $input.all().map(r => ({ ...r.json, d: iso(r.json.data_wystawienia) }));\nreturn $('DodanieKlucza').all().flatMap(({ json: p }) => {\n  const prev = hist.filter(h => h.d && h.d < iso(p.data_wystawienia) && h.nazwa?.toLowerCase().trim() === p.nazwa.toLowerCase().trim() && h['nr.fv'] !== p['nr.fv']).sort((a, b) => a.d.localeCompare(b.d)).at(-1);\n  if (!prev) return [];\n  const zmiana = (num(p.cena_netto) - num(prev.cena_netto)) / num(prev.cena_netto) * 100;\n  return zmiana > 10 ? [{ json: { nazwa: p.nazwa, nr_fv_poprzednia: prev['nr.fv'], poprzednia: num(prev.cena_netto), nr_fv_nowa: p['nr.fv'], nowa: num(p.cena_netto), zmiana_proc: +zmiana.toFixed(1) } }] : [];\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2880,
+        -288
+      ],
+      "id": "595534c7-7092-4c1f-a4e3-946483c1f766",
+      "name": "PorownajCeny"
+    },
+    {
+      "parameters": {
+        "chatId": "",
+        "text": "={{ $json.nazwa }} zdrożało o {{ $json.zmiana_proc }}%: {{ $json.poprzednia }} zł (faktura {{ $json.nr_fv_poprzednia }}) → {{ $json.nowa }} zł (faktura {{ $json.nr_fv_nowa }})",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        3072,
+        -288
+      ],
+      "id": "81d88c30-6505-4d30-8430-7f8997867922",
+      "name": "AlertPodwyzka",
+      "webhookId": "",
+      "retryOnFail": true,
+      "credentials": {
+        "telegramApi": {
+          "id": "",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "",
+        "text": "=Faktura wymaga ręcznej kontroli: brak numeru lub daty. Plik: {{ $('PobierzPDF').first().json.name }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2208,
+        -96
+      ],
+      "id": "2e6ddcb2-b00c-4e5f-a0d2-da0e77f21a13",
+      "name": "AlertBrakNumeruDaty",
+      "webhookId": "",
+      "executeOnce": true,
+      "retryOnFail": true,
+      "credentials": {
+        "telegramApi": {
+          "id": "",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const norm = s => String(s).toLowerCase().replace(/\\s+/g, ' ').trim();\nconst t = norm($('PDFnaTekst').first().json.text);\nreturn $input.all().filter(({ json: p }) => t.includes(norm(p.nazwa)));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        -192
+      ],
+      "id": "2c30de36-1ed4-4ecd-8361-859435dfd994",
+      "name": "SprawdzenieZmyśleniaModelu"
+    },
+    {
+      "parameters": {
+        "content": "### 2. Ekstrakcja i ochrona przed halucynacją\nModel zwraca pozycje w stałym schemacie JSON. Pozycje, których nazwy nie ma w tekście PDF-a, są odrzucane.",
+        "height": 112,
+        "width": 512,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        1184,
+        -384
+      ],
+      "typeVersion": 1,
+      "id": "1dbd7a95-173d-4b2c-a63f-13b757a5f99d",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "### 3. Walidacja i zapis\nPozycja bez numeru faktury lub daty idzie do ręcznej kontroli. Reszta dostaje klucz \"nr.fv|nazwa\" i trafia do arkusza (Append or Update), więc ta sama faktura nie tworzy duplikatów.",
+        "height": 144,
+        "width": 560,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        1952,
+        96
+      ],
+      "typeVersion": 1,
+      "id": "cbc9f5d4-15b5-4b0b-bdc1-11f640a22ab5",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "### 4. Alert o podwyżce\nPorównuje cenę netto z fakturą o najbliższej wcześniejszej dacie. Alert tylko przy wzroście powyżej 10% (próg w węźle PorownajCeny).",
+        "height": 128,
+        "width": 672,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        2512,
+        -496
+      ],
+      "typeVersion": 1,
+      "id": "0d11cb59-2220-4596-abed-4b1486b1e26c",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $('PobierzPDF').item.json.id }}",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        464,
+        -176
+      ],
+      "id": "ea3f669b-fc02-4af2-8a4f-168a2c040762",
+      "name": "PobierzFV",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "",
+          "name": "Google Drive account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "WyciągnijPozycjeAI",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PobierzPDF": {
+      "main": [
+        [
+          {
+            "node": "PobierzFV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PDFnaTekst": {
+      "main": [
+        [
+          {
+            "node": "CzyFaktura?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WyciągnijPozycjeAI": {
+      "main": [
+        [
+          {
+            "node": "RozdzielPozycje",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RozdzielPozycje": {
+      "main": [
+        [
+          {
+            "node": "SprawdzenieZmyśleniaModelu",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CzyFaktura?": {
+      "main": [
+        [
+          {
+            "node": "WyciągnijPozycjeAI",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AlertNieFaktura",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CzyDataNumer": {
+      "main": [
+        [
+          {
+            "node": "DodanieKlucza",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AlertBrakNumeruDaty",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DodanieKlucza": {
+      "main": [
+        [
+          {
+            "node": "ZapiszDoArkusza",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ZapiszDoArkusza": {
+      "main": [
+        [
+          {
+            "node": "PobierzHistorieCen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PobierzHistorieCen": {
+      "main": [
+        [
+          {
+            "node": "PorownajCeny",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PorownajCeny": {
+      "main": [
+        [
+          {
+            "node": "AlertPodwyzka",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AlertPodwyzka": {
+      "main": [
+        []
+      ]
+    },
+    "SprawdzenieZmyśleniaModelu": {
+      "main": [
+        [
+          {
+            "node": "CzyDataNumer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PobierzFV": {
+      "main": [
+        [
+          {
+            "node": "PDFnaTekst",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": ""
+  },
+  "nodeGroups": [],
+  "id": "",
+  "tags": []
+}
