@@ -4,8 +4,6 @@
 
 **Stos:** n8n, OpenAI (gpt-4o-mini), Google Drive, Google Sheets, Telegram, JavaScript
 
-![Workflow](screens/workflow.png)
-
 Workflow w n8n, który po wrzuceniu faktury PDF do folderu na Dysku Google automatycznie wyciąga z niej pozycje, zapisuje je w Google Sheets (bez duplikatów) i porównuje ceny z wcześniejszymi fakturami. Gdy cena netto produktu wzrosła o więcej niż 10%, wysyła alert na Telegram. Dokumenty, które nie są fakturami albo nie mają numeru lub daty, nie trafiają do arkusza, a Telegram informuje o nich osobnym alertem.
 
 Projekt był testowany na przykładowych, zanonimizowanych fakturach.
